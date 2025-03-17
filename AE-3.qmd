@@ -1,0 +1,222 @@
+---
+title: "AE#3"
+author: "David Brown & Natalie Elliot"
+date: "3/16/2025"
+format: 
+  html:
+    code-fold: true
+---
+
+## Task 1: Data Cleaning and Preparation
+
+For this assignemnt, we chose to work with the Seattle Public Library Circulation Data.\
+First, we need to install the necessary packages. Then we'll load the libraries.
+
+```{r}
+install.packages("readr")
+install.packages("caret")
+install.packages("tidyverse")
+install.packages("tidytext")
+install.packages("stm")
+install.packages("ggplot2")
+install.packages("RColorBrewer")
+install.packages("tm")
+install.packages("LDAvis")
+install.packages("igraph")
+install.packages("reshape2")
+```
+
+```{r}
+library(readr)
+library(caret)
+library(tidyverse)
+library(tidytext)
+library(stm)
+library(ggplot2)
+library(RColorBrewer)
+library(tm)
+library(LDAvis)
+library(igraph)
+library(reshape2)
+```
+
+### Load the data
+
+Next, we load the data and name it "books" for ease of use.
+
+```{r}
+books <- read.csv("Seattle_Book_Checkouts_2010_2017-1.csv")
+```
+
+### Examine the data
+
+We then need to examine the data before we do anything else.
+
+```{r}
+colnames(books) #view column/variable names
+head(books) #view first 6 rows
+str(books) #view structure of data
+summary(books) #view summary of data
+```
+
+### Check for missing values
+
+Now that we have a feel of the data and data types, we need to check for any missing values. We'll use three different methods to verify.
+
+```{r}
+which(is.na(books)) #check which values are missing
+sum(is.na(books)) #sum of NA values
+anyNA(books) #returns a logical character string of whether there are any missing (NA) values
+```
+
+Since there are no missing values in this dataset, we'll move forward with reducing the variable since most of them we won't need.
+
+### Create new dataframe with important variables
+
+```{r}
+books <- books[, c(6, 9)]
+str(books) #to verify conversion
+```
+
+Now we'll need to reduce the size of the data by taking a random sample. Otherwise, it's far to large for R to process.
+
+### Take random sample
+
+```{r}
+set.seed(123) #for reproducibility
+
+#shuffle rows in dataframe
+books <- books[sample(nrow(books)),]
+
+## split big data file to 1/1000 of its size (otherwise it's too big for r to process)
+ind <- createDataPartition(books$Checkouts, p=1/1000, list = FALSE)
+books <- books[ind,]
+
+# verify split
+str(books)
+```
+
+## Task 2: Data Analysis and Visualization
+
+Now we can work on our data analysis. We'll be using Topic Modeling to analyze the Subjects variable.
+
+### Set seed
+
+```{r}
+set.seed(123) #for reproducability
+```
+
+### Text Preprocessing
+
+This process builds the text corpus, converts terms to lowercase, removes punctuation, removes stopwords, removes numbers, and stems the text (uses root words). We added some additional stop words relevant to this dataset.
+
+```{r}
+#Text pre-processing
+processed <- textProcessor(books$Subjects,
+                           removepunctuation = TRUE, 
+                           customstopwords = c("fiction",
+                                               "juvenile",
+                                               "literature",
+                                               "novella",
+                                               "novel",
+                                               "etc",
+                                               "character",
+                                               "book"),
+                           #removes additional stop words
+                           #not covered by the textProcessor
+                           #function
+                           metadata = books)
+
+out <- prepDocuments(processed$documents, processed$vocab, processed$meta) #preps documents for use with stm function by removing infrequent terms
+docs <- out$documents
+vocab <- out$vocab
+meta <- out$meta
+```
+
+### Run the Structural Topic Modeling
+
+This process builds the structural topic model for use in visualizations of terms in the Subjects variable of our original dataset.
+
+```{r}
+STM <- stm(documents = out$documents,
+           vocab = out$vocab,
+           K = 5,
+           max.em.its = 75,
+           data = out$meta,
+           init.type = "Spectral",
+           verbose = FALSE)
+```
+
+### Plotting the topics by document-topic proportions
+
+#### Method 1: Plotting top words
+
+This plots the top words for each topic and then ranks them by proportion.
+
+```{r}
+plot(STM)
+```
+
+#### Method 2: Plotting MAP histogram
+
+This plot shows distribution frequencies of top terms under each topic.
+
+```{r}
+plot(STM, type="hist")
+```
+
+#### Method 3: Visualizing topic model using ggplot2
+
+This visualization tidies the topics and assigns to variable "topics", determines the most frequent terms and assigns to variable "top_terms", and plots the top terms using a side bar graph for comparing proportions of terms under each topic.
+
+```{r}
+topics <- tidy(STM, matrix = "beta") #tidies the topics and assigns to variable "topics"
+
+top_terms <- topics %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta) #determines most frequent terms and assigns to variable "top_terms"
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5, size = 18))+
+  labs(title="STM for SPL Book Subjects", caption="Top Terms")+
+  ylab("")+
+  xlab("")+
+  coord_flip() #plots top terms using a side bar graph for comparing proportions of terms under each topic
+```
+
+#### Visualizing topic correlation
+
+We can view the correlation between terms within each topic.
+
+```{r}
+topicor <- topicCorr(STM)
+plot(topicor)
+```
+
+## Task 3: Reflections
+
+### Reflection Questions
+
+1.  Explain in your own words the type of data you used and the activities you completed.
+
+2.  Describe your experience using your chosen programming language and any issues you encountered. For example, did you have any problems uploading the dataset in R and/or using topic modeling in R?
+
+3.  Do you think you will use this software and process again in the future? Explain your answer including potential projects that might be appropriate.
+
+4.  Which *data analysis* technique did you choose and why did you choose that one?
+
+### Natalie's reflection:
+
+1.  For AE#3 we chose to use the Seattle Circulation Data. This data contained information about book checkouts from the Seattle Public Library from 2010 - 2017. We focused on the Subject variable which contains character data types. For this assignment, I cloned the GitHub repo that David created into Posit Cloud. I changed the access from Private to All Posit Cloud Users before adding him to the workspace. I then created the Quarto (.qmd) file for us to collaborate on. I did all of the data cleaning and preprocessing, as well as adapted the R script for use with our data.
+2.  My experience with using R was pleasant, but I'm an experienced user of R. I'd never done topic modeling before, so that was new but manageable. We'd initially thought of using burst detection, but after some messing around with the script, it became clear that it wasn't suitable for our chosen dataset (probably would work well with the Nobel Prize Winners set though). I did have some difficulties getting the `toLDAvis()` function to render properly, so I left that visualization method out. I also couldn't get the `findThoughts()` function to match with the original. If I'd had more time to mess around with it, I'm sure I would have figured it out though. Due to the dataset's size, working with limited RAM capacity in Posit Cloud Workspace meant that I had to reduce the size of the data by taking a random sample.
+3.  I could definitely see topic modeling as something I'd potentially use in the future. Just off the top of my head, this would be useful for analyzing interview responses in research data to see what trends appear in participant responses. I could also see it being useful for examining topic similarities within specific philosophical schools of though. For example, what topics are mentioned by post-modernists. Also, in that same vein, could be used to examine topics for prolific writers, such as Kant or Plato. But I don't think even that is limited to only philosophers, because it could be used to look at prolific writers of fiction too (Stephen King or Neil Gaiman both come to mind immediately).
+4.  After nixing burst detection for being not suitable for our chosen data, we settled on topic modeling. The idea behind using topic modeling was to focus on the Subjects variable. In the demo script provided via the instructions titles are used. But, I felt that for our data topic modeling would work better for subjects because it can tell us which subjects are most popular. That could lend itself to determining which subjects are less popular and may need increased marketing (i.e., book displays) to help increase circulation. Subjects that already enjoy high popularity don't need the marketing tactics as much as those that are less popular, and topic modeling proved useful for identifying frequent topics.
+
+### David's reflection:
